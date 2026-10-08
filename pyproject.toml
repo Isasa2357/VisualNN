@@ -2,10 +2,8 @@
 name = "visualnn"
 version = "0.1.0"
 description = "Add your description here"
-readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    # Main packages from the existing environment.
     "cloudpickle==3.1.2",
     "matplotlib==3.11.2",
     "numpy==2.5.2",
@@ -15,9 +13,7 @@ dependencies = [
     "scipy==1.18.1",
     "tensorboard==2.21.0",
     "tqdm==4.70.1",
-
-    # Select a suitable PyTorch CUDA/CPU distribution on each PC.
-    # Do not pin a local build suffix such as +cu130.
+    # Select the CPU/CUDA build at installation time for each machine.
     "torch",
     "torchaudio",
     "torchvision",
@@ -32,8 +28,13 @@ dev = [
     "ruff==0.16.7",
 ]
 
+[tool.uv]
+# Prevent `uv run` from re-syncing a CUDA-enabled PyTorch installation
+# against uv.lock and replacing it with a CPU build.
+managed = false
+
 [tool.uv.pip]
-# Used by 'uv pip' commands, not 'uv sync' or 'uv add'.
+# Used by `uv pip` commands; setup.ps1 also passes this explicitly.
 torch-backend = "auto"
 
 [build-system]

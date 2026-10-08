@@ -29,7 +29,7 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "PyTorch uninstall failed." }
 
     Write-Host "[3/3] Installing project and development dependencies ($TorchBackend)..."
-    & uv pip install --python $python --torch-backend $TorchBackend -e . --group dev
+    & uv pip install --python $python --torch-backend $TorchBackend -e ".[dev]"
     if ($LASTEXITCODE -ne 0) { throw "Dependency installation failed." }
 
     Write-Host ""

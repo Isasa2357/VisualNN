@@ -1,0 +1,82 @@
+# ========================================
+# Python virtual environments
+# ========================================
+.venv/
+venv/
+env/
+
+# ========================================
+# Python cache
+# ========================================
+__pycache__/
+*.py[cod]
+*.pyd
+*.so
+
+# ========================================
+# uv cache
+# ========================================
+.uv-cache/
+
+# ========================================
+# Python build files
+# ========================================
+build/
+dist/
+*.egg-info/
+
+# ========================================
+# Development tools
+# ========================================
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+.idea/
+
+# ========================================
+# Environment variables / Secrets
+# ========================================
+.env
+.env.*
+!.env.example
+
+# ========================================
+# Logs
+# ========================================
+*.log
+
+# ========================================
+# OS generated files
+# ========================================
+# Windows
+Thumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# macOS
+.DS_Store
+
+# ========================================
+# Machine Learning (optional)
+# ========================================
+# Training outputs
+runs/
+checkpoints/
+logs/
+
+# TensorBoard
+events.out.tfevents.*
+
+# Large datasets (uncomment if needed)
+# data/
+# datasets/
+
+# Model weights (uncomment if needed)
+# *.pt
+# *.pth
+# *.onnx
+
+# Ignore run and dataset directories at any depth
+**/run/
+**/dataset/

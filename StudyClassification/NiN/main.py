@@ -3,6 +3,7 @@
 import argparse
 from tqdm import tqdm
 import os
+from typing import SupportsFloat
 
 import matplotlib.pyplot as plt
 
@@ -14,7 +15,7 @@ from torchvision import transforms
 
 from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
 from comm.filesystem import solve_filename_conflict, solve_foldername_conflict
-from comm.train_eval import train_loop, make_log, log_args
+from comm.train_eval import train_loop, make_log, SchedulerStepTiming
 from NiN.nn import NiN
 
 def main():
@@ -51,6 +52,15 @@ def main():
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)
+    scheduler = optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer,
+        mode="min",          # 評価損失は小さいほどよい
+        factor=0.1,          # 学習率を1/10にする
+        patience=5,          # 改善しないエポックに5回の猶予
+        threshold=0.001,     # 0.001を超える損失低下を改善と判定
+        threshold_mode="abs",
+        min_lr=1e-6,
+    )
 
     # train_transform = transforms.Compose([
     #     transforms.RandomResizedCrop((32, 32), scale=(0.5, 1.0)),
@@ -61,21 +71,28 @@ def main():
     # ])
     train_transform = transforms.Compose([
         transforms.Resize((32, 32)),
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=(0.5, 0.5, 0.5),
+            std=(0.5, 0.5, 0.5),
+        ),
     ])
     
     val_transform = transforms.Compose([
         transforms.Resize((32, 32)), 
-        transforms.ToTensor()
+        transforms.ToTensor(),
+        transforms.Normalize(
+            mean=(0.5, 0.5, 0.5),
+            std=(0.5, 0.5, 0.5),
+        ),
     ])
 
     train_loader, val_loader = make_dataloader(dataset_enum, batch_size=batch_size, train_transform=train_transform, val_transform=val_transform, download=True)
 
-    train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs)
+    train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs, scheduler_step=lambda m: scheduler.step(m.val_loss), scheduler_step_timing=SchedulerStepTiming.AFTER_EACH_EPOCH)
 
     # 結果の保存
-    make_log(os.path.join(project, result), model, train_losses, train_accs, val_losses, val_accs, timestamps)
-    log_args(os.path.join(project, result), args)
+    make_log(os.path.join(project, result), model, train_losses, train_accs, val_losses, val_accs, timestamps, args)
 
 if __name__ == '__main__':
     main()

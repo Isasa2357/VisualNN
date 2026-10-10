@@ -14,7 +14,7 @@ from torchvision import transforms
 
 from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
 from comm.filesystem import solve_filename_conflict, solve_foldername_conflict
-from comm.train_eval import train_loop, make_log, log_args
+from comm.train_eval import train_loop, make_log
 from ResNet.network import WideResNet18
 
 def make_model(model_name: str, model_path: str, widen_factor: int, drop_rate: float, class_num: int, pre_activation: bool, device: torch.device) -> nn.Module:
@@ -33,11 +33,11 @@ def main():
     parser.add_argument('--epochs', type=int, default=100)
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=0.0001)
-    parser.add_argument('--widen-factor', type=float, help='Widen factor of the Wide ResNet')
+    parser.add_argument('--widen-factor', type=float, required=True, help='Widen factor of the Wide ResNet')
     parser.add_argument('--drop-rate', type=float, default=0.0, help='Dropout rate of the Wide ResNet')
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
-    parser.add_argument('--project', type=str, default='WideResNet')
-    parser.add_argument('--result', type=str, default='result')
+    parser.add_argument('--project', type=str, default='run')
+    parser.add_argument('--result', type=str, default='WideResNet')
     args = parser.parse_args()
 
     dataset_enum = get_dataset_enum(args.dataset)
@@ -78,8 +78,7 @@ def main():
     train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs)
 
     # 結果の保存
-    make_log(os.path.join(project, result), model, train_losses, train_accs, val_losses, val_accs, timestamps)
-    log_args(os.path.join(project, result), args)
-
+    make_log(os.path.join(project, result), model, train_losses, train_accs, val_losses, val_accs, timestamps, args)
+    
 if __name__ == '__main__':
     main()

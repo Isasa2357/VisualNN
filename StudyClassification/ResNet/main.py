@@ -24,7 +24,7 @@ from torchvision import transforms
 
 from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
 from comm.filesystem import solve_filename_conflict, solve_foldername_conflict
-from comm.train_eval import train_loop, make_log, log_args
+from comm.train_eval import train_loop, make_log
 from ResNet.network import ResNet18, ResNet50, PreactivationResNet18
 
 def make_model(model_name: str, use_pre_activation: bool, user_model_path: str, class_num: int, device: torch.device) -> nn.Module:
@@ -55,8 +55,8 @@ def main():
     parser.add_argument('--batch-size', type=int, default=32)
     parser.add_argument('--lr', type=float, default=0.0001)
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
-    parser.add_argument('--project', type=str, default='ResNet')
-    parser.add_argument('--result', type=str, default='result')
+    parser.add_argument('--project', type=str, default='run')
+    parser.add_argument('--result', type=str, default='ResNet')
     args = parser.parse_args()
 
     dataset_enum = get_dataset_enum(args.dataset)
@@ -95,8 +95,7 @@ def main():
     train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs)
 
     # ログの保存
-    make_log(os.path.join(project, result), model, train_losses, train_accs, val_losses, val_accs, timestamps)
-    log_args(os.path.join(project, result), args)
+    make_log(os.path.join(project, result), model, train_losses, train_accs, val_losses, val_accs, timestamps, args)
 
 if __name__ == "__main__":
     main()

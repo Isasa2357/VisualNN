@@ -70,7 +70,7 @@ def main():
     train_losses, train_accs, val_losses, val_accs, timestamp_history = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs)
     
     save_root = solve_foldername_conflict(os.path.join(project, result))
-    make_log(save_root, model, train_losses, train_accs, val_losses, val_accs, timestamp_history)
+    make_log(save_root, model, train_losses, train_accs, val_losses, val_accs, timestamp_history, args)
 
 
 if __name__ == "__main__":

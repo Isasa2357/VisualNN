@@ -19,7 +19,7 @@ from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_n
 from comm.train_eval import train_loop
 from comm.train_eval import make_log
 
-from MobileNet_v1.network import MobileNetV1
+from MobileNet.network import MobileNetV1
 
 def main():
     parser = argparse.ArgumentParser()

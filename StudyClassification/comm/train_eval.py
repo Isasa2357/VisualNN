@@ -50,11 +50,13 @@ def eval(model: nn.Module, data_loader: DataLoader, criterion: nn.Module, device
     total_correct = 0
     total_samples = 0
 
+    param_dtype = next(model.parameters()).dtype
+
     start = datetime.now()
 
     with torch.no_grad():
         for inputs, targets in tqdm(data_loader, desc="Evaluating", leave=False, position=1):
-            inputs, targets = inputs.to(device), targets.to(device)
+            inputs, targets = inputs.to(device, non_blocking=True, dtype=param_dtype), targets.to(device, non_blocking=True)
             outputs = model(inputs)
             loss = loss_calculation_fn(outputs, targets, criterion)
             total_loss += loss.item() * inputs.size(0)
@@ -85,10 +87,12 @@ def train_one_epoch(
     total_correct = 0
     total_samples = 0
 
+    param_dtype = next(model.parameters()).dtype
+
     start = datetime.now()
 
     for inputs, targets in tqdm(data_loader, desc="Training", leave=False, position=1):
-        inputs, targets = inputs.to(device, non_blocking=True), targets.to(device, non_blocking=True)
+        inputs, targets = inputs.to(device, non_blocking=True, dtype=param_dtype), targets.to(device, non_blocking=True)
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = loss_calculation_fn(outputs, targets, criterion)

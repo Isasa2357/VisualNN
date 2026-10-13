@@ -72,14 +72,16 @@ def make_dataloader(
         val_transform: transforms.Compose, 
         download: bool = False, 
         num_workers: int = 8, 
-        prefetch_factor: int = 2) -> tuple[DataLoader, DataLoader]:
+        prefetch_factor: int = 2, 
+        robocopy: bool = True) -> tuple[DataLoader, DataLoader]:
 
     root_path, train_path, val_path = get_dataset_path(dataset)
 
     # ダウンロードがTrueなら，実行ディレクトリにデータセットをコピー
     if download:
         dataset_str = get_dataset_str(dataset)
-        subprocess.run(["robocopy", root_path, f"./dataset/{dataset_str}", "/E", "/MT:8"])
+        if robocopy:
+            subprocess.run(["robocopy", root_path, f"./dataset/{dataset_str}", "/E", "/MT:8"])
 
         # コピー後にtrain_pathとval_pathを更新
         train_path = f"./dataset/{dataset_str}/train"

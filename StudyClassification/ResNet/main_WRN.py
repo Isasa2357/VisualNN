@@ -38,6 +38,7 @@ def main():
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--project', type=str, default='run')
     parser.add_argument('--result', type=str, default='WideResNet')
+    parser.add_argument('--no-robocopy', action='store_true', help='Use robocopy to copy the dataset')
     args = parser.parse_args()
 
     dataset_enum = get_dataset_enum(args.dataset)
@@ -72,7 +73,7 @@ def main():
         transforms.ToTensor()
     ])
 
-    train_loader, val_loader = make_dataloader(dataset_enum, batch_size=batch_size, train_transform=train_transform, val_transform=val_transform, download=True)
+    train_loader, val_loader = make_dataloader(dataset_enum, batch_size=batch_size, train_transform=train_transform, val_transform=val_transform, download=True, robocopy=not args.no_robocopy)
 
     # 学習の実行
     train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs)

@@ -8,7 +8,7 @@ import torch
 from torch import optim, nn
 from torchvision import transforms
 
-from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
+from comm.dataset import make_dataloader, get_dataset_enum, get_class_num
 from comm.train_eval import train_loop, make_log
 
 from MobileNet.network import MobileNetV2
@@ -68,7 +68,7 @@ def main():
     ).to(device, dtype=param_dtype)
     
     criterion = nn.CrossEntropyLoss()
-    optimizer = optim.Adam(model.parameters(), lr=lr)
+    optimizer = optim.Adam(model.parameters(), lr=lr, eps=1e-4)
 
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop((224, 224)),

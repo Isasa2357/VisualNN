@@ -71,6 +71,13 @@ def eval(model: nn.Module, data_loader: DataLoader, criterion: nn.Module, device
 
     return avg_loss, accuracy, start, end
 
+def check_weights(model):
+    return [
+        name
+        for name, p in model.named_parameters()
+        if not torch.isfinite(p).all().item()
+    ]
+
 def train_one_epoch(
         epoch: int,
         model: nn.Module, 
@@ -97,7 +104,17 @@ def train_one_epoch(
         outputs = model(inputs)
         loss = loss_calculation_fn(outputs, targets, criterion)
         loss.backward()
+
+        # print("Before optimizer step:", check_weights(model))
         optimizer.step()
+        # print("After optimizer step:", check_weights(model))
+
+        # print(inputs)
+        # print(param_dtype)
+        # # print(outputs)
+        # # print(targets)
+        # # print(loss)
+        # print()
 
         total_loss += loss.item() * inputs.size(0)
         _, predicted = torch.max(outputs, 1)

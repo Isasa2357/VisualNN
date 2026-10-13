@@ -64,7 +64,15 @@ def get_dataset_path(dataset: Dataset) -> tuple[str, str, str]:
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
-def make_dataloader(dataset: Dataset, batch_size: int, train_transform: transforms.Compose, val_transform: transforms.Compose, download: bool = False) -> tuple[DataLoader, DataLoader]:
+def make_dataloader(
+        dataset: Dataset, 
+        batch_size: int, 
+        train_transform: 
+        transforms.Compose, 
+        val_transform: transforms.Compose, 
+        download: bool = False, 
+        num_workers: int = 8, 
+        prefetch_factor: int = 2) -> tuple[DataLoader, DataLoader]:
 
     root_path, train_path, val_path = get_dataset_path(dataset)
 
@@ -92,7 +100,7 @@ def make_dataloader(dataset: Dataset, batch_size: int, train_transform: transfor
         val_dataset = ImageFolder(root=val_path, transform=val_transform)
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False)
+    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, prefetch_factor=prefetch_factor)
+    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, prefetch_factor=prefetch_factor)
 
     return train_loader, val_loader

@@ -6,7 +6,6 @@ import argparse
 
 from collections.abc import Callable
 from datetime import datetime
-from typing import TypeVar, Union
 from dataclasses import dataclass
 from enum import Enum
 

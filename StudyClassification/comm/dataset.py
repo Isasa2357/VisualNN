@@ -71,7 +71,7 @@ def make_dataloader(
         transforms.Compose, 
         val_transform: transforms.Compose, 
         download: bool = False, 
-        num_workers: int = 8, 
+        num_workers: int = 2, 
         prefetch_factor: int = 2, 
         robocopy: bool = True) -> tuple[DataLoader, DataLoader]:
 
@@ -102,7 +102,23 @@ def make_dataloader(
         val_dataset = ImageFolder(root=val_path, transform=val_transform)
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
-    train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, prefetch_factor=prefetch_factor)
-    val_loader = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=num_workers, prefetch_factor=prefetch_factor)
+    train_loader = DataLoader(
+        train_dataset, 
+        batch_size=batch_size, 
+        shuffle=True, 
+        num_workers=num_workers, 
+        prefetch_factor=prefetch_factor, 
+        pin_memory=True, 
+        persistent_workers=True,
+        )
+    val_loader = DataLoader(
+        val_dataset, 
+        batch_size=batch_size, 
+        shuffle=False, 
+        num_workers=num_workers, 
+        prefetch_factor=prefetch_factor,
+        pin_memory=True,
+        persistent_workers=True,
+        )
 
     return train_loader, val_loader

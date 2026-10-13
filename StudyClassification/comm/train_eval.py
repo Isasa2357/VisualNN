@@ -88,7 +88,7 @@ def train_one_epoch(
     start = datetime.now()
 
     for inputs, targets in tqdm(data_loader, desc="Training", leave=False, position=1):
-        inputs, targets = inputs.to(device), targets.to(device)
+        inputs, targets = inputs.to(device, non_blocking=True), targets.to(device, non_blocking=True)
         optimizer.zero_grad()
         outputs = model(inputs)
         loss = loss_calculation_fn(outputs, targets, criterion)

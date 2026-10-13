@@ -46,6 +46,8 @@ def make_model(model_name: str, use_pre_activation: bool, user_model_path: str, 
     return model
 
 def main():
+    torch.backends.cudnn.benchmark = True
+
     parser = argparse.ArgumentParser()
     parser.add_argument('--dataset', type=str, default='imagenette2-160')
     parser.add_argument('--user-model', type=str, help='Path to a custom user-defined model', default=None)
@@ -57,6 +59,7 @@ def main():
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
     parser.add_argument('--project', type=str, default='run')
     parser.add_argument('--result', type=str, default='ResNet')
+    parser.add_argument('--no-robocopy', action='store_true', help='Disable robocopy for dataset copying')
     args = parser.parse_args()
 
     dataset_enum = get_dataset_enum(args.dataset)
@@ -89,7 +92,7 @@ def main():
         transforms.ToTensor()
     ])
 
-    train_loader, val_loader = make_dataloader(dataset_enum, batch_size=batch_size, train_transform=train_transform, val_transform=val_transform, download=True)
+    train_loader, val_loader = make_dataloader(dataset_enum, batch_size=batch_size, train_transform=train_transform, val_transform=val_transform, download=True, robocopy=not args.no_robocopy, num_workers=4, prefetch_factor=4)
 
     # 学習の実行
     train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs)

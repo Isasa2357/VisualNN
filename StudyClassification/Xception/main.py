@@ -26,6 +26,9 @@ def parse_args():
     parser.add_argument("--dataset", type=str, default="imagenette2-320", help="Dataset name")
     parser.add_argument("--device", type=str, default="cuda", help="Device to use for training")
     parser.add_argument("--use_amp", action="store_true", help="Use automatic mixed precision for training")
+    parser.add_argument("--early_stop_patience", type=int, default=30, help="Patience for early stopping")
+    parser.add_argument("--early_stop_min_delta", type=float, default=0.001, help="Minimum change to qualify as improvement for early stopping")
+    parser.add_argument("--early_stop_warmup_epochs", type=int, default=30, help="Number of warmup epochs before early stopping starts checking")
 
     # model setting
     parser.add_argument("--model", type=str, default=None, help="Model path")
@@ -52,6 +55,9 @@ def main():
     num_classes = get_class_num(dataset_enum)
     device = torch.device(args.device)
     use_amp = args.use_amp
+    early_stop_patience = args.early_stop_patience
+    early_stop_min_delta = args.early_stop_min_delta
+    early_stop_warmup_epochs = args.early_stop_warmup_epochs
     model_path = args.model
     dropout = args.dropout
     dir = args.dir
@@ -112,9 +118,9 @@ def main():
             scheduler_step_timing=SchedulerStepTiming.AFTER_EACH_EPOCH,
             use_amp=use_amp,
             early_stop_settings=EarlyStopSettings(
-                patience=10,
-                min_delta=0.001, 
-                warmup_epochs=30
+                patience=early_stop_patience,
+                min_delta=early_stop_min_delta, 
+                warmup_epochs=early_stop_warmup_epochs
             )
         )
 

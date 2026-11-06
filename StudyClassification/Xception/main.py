@@ -13,7 +13,7 @@ from torchvision import transforms
 
 from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
 from comm.filesystem import solve_filename_conflict, solve_foldername_conflict
-from comm.train_eval import train_loop, make_log, EpochMetrics
+from comm.train_eval import train_loop, make_log, EpochMetrics, SchedulerStepTiming
 from Xception.nn import Xception
 
 def parse_args():
@@ -25,6 +25,7 @@ def parse_args():
     parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
     parser.add_argument("--dataset", type=str, default="imagenette2-320", help="Dataset name")
     parser.add_argument("--device", type=str, default="cuda", help="Device to use for training")
+    parser.add_argument("--use_amp", action="store_true", help="Use automatic mixed precision for training")
 
     # model setting
     parser.add_argument("--model", type=str, default=None, help="Model path")
@@ -49,7 +50,8 @@ def main():
     lr = args.lr
     dataset_enum = get_dataset_enum(args.dataset)
     num_classes = get_class_num(dataset_enum)
-    device = args.device
+    device = torch.device(args.device)
+    use_amp = args.use_amp
     model_path = args.model
     dropout = args.dropout
     dir = args.dir
@@ -97,7 +99,19 @@ def main():
         scheduler.step()
 
     # 学習の実行
-    train_losses, train_accs, val_losses, val_accs, timestamps = train_loop(model, train_loader, val_loader, criterion, optimizer, device, epochs, scheduler_step=scheduler_step)
+    train_losses, train_accs, val_losses, val_accs, timestamps = \
+        train_loop(
+            model, 
+            train_loader, 
+            val_loader, 
+            criterion, 
+            optimizer, 
+            device, 
+            epochs, 
+            scheduler_step=scheduler_step, 
+            scheduler_step_timing=SchedulerStepTiming.AFTER_EACH_EPOCH,
+            use_amp=use_amp
+        )
 
     # 結果の保存
     make_log(

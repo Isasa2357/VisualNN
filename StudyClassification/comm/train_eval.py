@@ -87,6 +87,7 @@ def train_one_epoch(
         device: torch.device, 
         loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module], torch.Tensor] = default_loss_calculation, 
         scheduler_step: SchedulerStep | None = None,
+        scaler: torch.amp.GradScaler | None = None,
     ) -> tuple[float, float, datetime, datetime]:
 
     model.train()
@@ -101,10 +102,17 @@ def train_one_epoch(
     for inputs, targets in tqdm(data_loader, desc="Training", leave=False, position=1):
         inputs, targets = inputs.to(device, non_blocking=True, dtype=param_dtype), targets.to(device, non_blocking=True)
         optimizer.zero_grad()
-        outputs = model(inputs)
-        loss = loss_calculation_fn(outputs, targets, criterion)
-        loss.backward()
 
+        if scaler is None:
+            outputs = model(inputs)
+            loss = loss_calculation_fn(outputs, targets, criterion)
+            loss.backward()
+        else:
+            with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16):
+                outputs = model(inputs)
+                loss = loss_calculation_fn(outputs, targets, criterion)
+            scaler.scale(loss).backward()
+        
         # print("Before optimizer step:", check_weights(model))
         optimizer.step()
         # print("After optimizer step:", check_weights(model))
@@ -129,8 +137,10 @@ def train_one_epoch(
                 val_loss=0.0, 
                 val_acc=0.0,
             )
+            before_scheduler_lr = optimizer.param_groups[0]['lr']
             scheduler_step(metrics)
-            tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr={optimizer.param_groups[0]['lr']}")
+            after_scheduler_lr = optimizer.param_groups[0]['lr']
+            tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")
 
     end = datetime.now()
 
@@ -145,11 +155,15 @@ def train_loop(
         val_loader: DataLoader, 
         criterion: nn.Module, 
         optimizer: optim.Optimizer, 
-        device: torch.device, num_epochs: int,
+        device: torch.device, 
+        num_epochs: int,
         loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module], torch.Tensor] = default_loss_calculation, 
         scheduler_step: SchedulerStep | None = None,
         scheduler_step_timing: SchedulerStepTiming | None = None,
+        use_amp: bool = False,
     ) -> tuple[list[float], list[float], list[float], list[float], list[tuple[datetime, datetime, datetime, datetime]]]:
+
+    scaler: torch.amp.GradScaler | None = torch.amp.GradScaler() if use_amp else None
 
     train_loss_history: list[float] = list()
     train_accs_history: list[float] = list()
@@ -157,8 +171,26 @@ def train_loop(
     val_accs_history: list[float] = list()
     timestamp_history: list[tuple[datetime, datetime, datetime, datetime]] = list()
     for epoch in tqdm(range(num_epochs), desc="Training Epochs", leave=True, position=0):
-        train_loss, train_acc, train_start, train_end = train_one_epoch(epoch, model, train_loader, criterion, optimizer, device, loss_calculation_fn, scheduler_step if scheduler_step_timing == SchedulerStepTiming.AFTER_EACH_BATCH else None)
-        val_loss, val_acc, val_start, val_end = eval(model, val_loader, criterion, device, loss_calculation_fn)
+        train_loss, train_acc, train_start, train_end = \
+            train_one_epoch(
+                epoch, 
+                model, 
+                train_loader, 
+                criterion, 
+                optimizer, 
+                device, 
+                loss_calculation_fn, 
+                scheduler_step if scheduler_step_timing == SchedulerStepTiming.AFTER_EACH_BATCH else None, 
+                scaler=scaler
+            )
+        val_loss, val_acc, val_start, val_end = \
+            eval(
+                model, 
+                val_loader, 
+                criterion, 
+                device, 
+                loss_calculation_fn
+            )
 
         train_duration: str = str(train_end - train_start).split('.')[0]
         val_duration: str = str(val_end - val_start).split('.')[0]
@@ -180,7 +212,12 @@ def train_loop(
                 val_loss=val_loss,
                 val_acc=val_acc,
             )
+
+            before_scheduler_lr = optimizer.param_groups[0]['lr']
             scheduler_step(metrics)
+            after_scheduler_lr = optimizer.param_groups[0]['lr']
+
+            tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")    
 
     return train_loss_history, train_accs_history, val_loss_history, val_accs_history, timestamp_history
 

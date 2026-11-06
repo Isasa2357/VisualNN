@@ -13,7 +13,7 @@ from torchvision import transforms
 
 from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
 from comm.filesystem import solve_filename_conflict, solve_foldername_conflict
-from comm.train_eval import train_loop, make_log, EpochMetrics, SchedulerStepTiming
+from comm.train_eval import train_loop, make_log, EpochMetrics, SchedulerStepTiming, EarlyStopSettings
 from Xception.nn import Xception
 
 def parse_args():
@@ -110,7 +110,12 @@ def main():
             epochs, 
             scheduler_step=scheduler_step, 
             scheduler_step_timing=SchedulerStepTiming.AFTER_EACH_EPOCH,
-            use_amp=use_amp
+            use_amp=use_amp,
+            early_stop_settings=EarlyStopSettings(
+                patience=10,
+                min_delta=0.001, 
+                warmup_epochs=30
+            )
         )
 
     # 結果の保存

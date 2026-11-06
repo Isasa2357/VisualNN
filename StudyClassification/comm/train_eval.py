@@ -36,6 +36,18 @@ class EpochMetrics:
 
 SchedulerStep = Callable[[EpochMetrics], None]
 
+@dataclass(frozen=True)
+class EarlyStopSettings:
+    patience: int
+    min_delta: float
+    warmup_epochs: int
+
+@dataclass(frozen=True)
+class EarlyStopState:
+    early_stop_settings: EarlyStopSettings
+    best_val_loss: float
+    counter: int
+
 def default_loss_calculation(out: torch.Tensor, target: torch.Tensor, criterion: nn.Module):
     '''
     デフォルトの損失計算関数
@@ -161,9 +173,16 @@ def train_loop(
         scheduler_step: SchedulerStep | None = None,
         scheduler_step_timing: SchedulerStepTiming | None = None,
         use_amp: bool = False,
+        early_stop_settings: EarlyStopSettings | None = None,
     ) -> tuple[list[float], list[float], list[float], list[float], list[tuple[datetime, datetime, datetime, datetime]]]:
 
     scaler: torch.amp.GradScaler | None = torch.amp.GradScaler() if use_amp else None
+
+    early_stop_state: EarlyStopState | None = EarlyStopState(
+        early_stop_settings=early_stop_settings,
+        best_val_loss=float('inf'),
+        counter=0
+    ) if early_stop_settings is not None else None
 
     train_loss_history: list[float] = list()
     train_accs_history: list[float] = list()
@@ -204,6 +223,29 @@ def train_loop(
         val_accs_history.append(val_acc)
         timestamp_history.append((train_start, train_end, val_start, val_end))
 
+        # early stop処理
+        if early_stop_state is not None:
+
+            if val_loss < early_stop_state.best_val_loss - early_stop_state.early_stop_settings.min_delta:
+                # 改善した場合
+                early_stop_state = EarlyStopState(
+                    early_stop_settings=early_stop_state.early_stop_settings,
+                    best_val_loss=val_loss,
+                    counter=0
+                )
+            else:
+                # 改善しなかった場合
+                early_stop_state = EarlyStopState(
+                    early_stop_settings=early_stop_state.early_stop_settings,
+                    best_val_loss=early_stop_state.best_val_loss,
+                    counter=early_stop_state.counter + 1
+                )
+
+            # early stop判定
+            if early_stop_state.counter >= early_stop_state.early_stop_settings.patience:
+                tqdm.write(f"Early stopping at epoch {epoch+1}")
+                break
+
         if scheduler_step is not None and scheduler_step_timing == SchedulerStepTiming.AFTER_EACH_EPOCH:
             metrics = EpochMetrics(
                 epoch=epoch,
@@ -217,7 +259,8 @@ def train_loop(
             scheduler_step(metrics)
             after_scheduler_lr = optimizer.param_groups[0]['lr']
 
-            tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")    
+            if before_scheduler_lr != after_scheduler_lr:
+                tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")    
 
     return train_loss_history, train_accs_history, val_loss_history, val_accs_history, timestamp_history
 

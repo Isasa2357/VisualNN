@@ -73,6 +73,9 @@ def make_dataloader(
         download: bool = False, 
         num_workers: int = 2, 
         prefetch_factor: int = 2, 
+        *, 
+        train_drop_last: bool = False,
+        val_drop_last: bool = False,
         robocopy: bool = True) -> tuple[DataLoader, DataLoader]:
 
     root_path, train_path, val_path = get_dataset_path(dataset)
@@ -102,6 +105,7 @@ def make_dataloader(
         val_dataset = ImageFolder(root=val_path, transform=val_transform)
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
+    
     train_loader = DataLoader(
         train_dataset, 
         batch_size=batch_size, 
@@ -109,8 +113,10 @@ def make_dataloader(
         num_workers=num_workers, 
         prefetch_factor=prefetch_factor, 
         pin_memory=True, 
+        drop_last=train_drop_last,
         persistent_workers=True,
-        )
+    )
+
     val_loader = DataLoader(
         val_dataset, 
         batch_size=batch_size, 
@@ -118,7 +124,8 @@ def make_dataloader(
         num_workers=num_workers, 
         prefetch_factor=prefetch_factor,
         pin_memory=True,
+        drop_last=val_drop_last,
         persistent_workers=True,
-        )
+    )
 
     return train_loader, val_loader

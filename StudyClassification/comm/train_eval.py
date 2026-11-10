@@ -48,14 +48,36 @@ class EarlyStopState:
     best_val_loss: float
     counter: int
 
-def default_loss_calculation(out: torch.Tensor, target: torch.Tensor, criterion: nn.Module):
+def default_loss_calculation(out: torch.Tensor, target: torch.Tensor, criterion: nn.Module, mode: str):
     '''
     デフォルトの損失計算関数
     '''
     return criterion(out, target)
 
-def eval(model: nn.Module, data_loader: DataLoader, criterion: nn.Module, device: torch.device, 
-         loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module], torch.Tensor] = default_loss_calculation) -> tuple[float, float, datetime, datetime]:
+def default_correct_calculation(out: torch.Tensor, target: torch.Tensor) -> tuple[int, int]:
+    '''
+    デフォルトの正解数計算関数
+
+    args:
+        out: モデルの出力テンソル
+        target: 正解ラベルのテンソル
+
+    returns:
+        正解数とサンプル数のタプル (correct, total)
+    '''
+    _, predicted = torch.max(out, 1)
+    correct = int((predicted == target).sum().item())
+    total = target.size(0)
+    return correct, total
+
+def eval(
+        model: nn.Module, 
+        data_loader: DataLoader, 
+        criterion: nn.Module, 
+        device: torch.device, 
+        loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module, str], torch.Tensor] = default_loss_calculation, 
+        correct_calculation_fn: Callable[[torch.Tensor, torch.Tensor], tuple[int, int]] = default_correct_calculation
+    ) -> tuple[float, float, datetime, datetime]:
 
     model.eval()
     total_loss = 0.0
@@ -70,11 +92,13 @@ def eval(model: nn.Module, data_loader: DataLoader, criterion: nn.Module, device
         for inputs, targets in tqdm(data_loader, desc="Evaluating", leave=False, position=1):
             inputs, targets = inputs.to(device, non_blocking=True, dtype=param_dtype), targets.to(device, non_blocking=True)
             outputs = model(inputs)
-            loss = loss_calculation_fn(outputs, targets, criterion)
+
+            loss = loss_calculation_fn(outputs, targets, criterion, "eval")
             total_loss += loss.item() * inputs.size(0)
-            _, predicted = torch.max(outputs, 1)
-            total_correct += (predicted == targets).sum().item()
-            total_samples += inputs.size(0)
+
+            correct, total = correct_calculation_fn(outputs, targets)
+            total_correct += correct
+            total_samples += total
 
     end = datetime.now()
 
@@ -97,7 +121,8 @@ def train_one_epoch(
         criterion: nn.Module, 
         optimizer: optim.Optimizer, 
         device: torch.device, 
-        loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module], torch.Tensor] = default_loss_calculation, 
+        loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module, str], torch.Tensor]=default_loss_calculation, 
+        correct_calculation_fn: Callable[[torch.Tensor, torch.Tensor], tuple[int, int]]=default_correct_calculation,
         scheduler_step: SchedulerStep | None = None,
         scaler: torch.amp.GradScaler | None = None,
     ) -> tuple[float, float, datetime, datetime]:
@@ -117,29 +142,21 @@ def train_one_epoch(
 
         if scaler is None:
             outputs = model(inputs)
-            loss = loss_calculation_fn(outputs, targets, criterion)
+            loss = loss_calculation_fn(outputs, targets, criterion, "train")
             loss.backward()
+            optimizer.step()
         else:
             with torch.amp.autocast(device_type=device.type, dtype=torch.bfloat16):
                 outputs = model(inputs)
-                loss = loss_calculation_fn(outputs, targets, criterion)
+                loss = loss_calculation_fn(outputs, targets, criterion, "train")
             scaler.scale(loss).backward()
-        
-        # print("Before optimizer step:", check_weights(model))
-        optimizer.step()
-        # print("After optimizer step:", check_weights(model))
-
-        # print(inputs)
-        # print(param_dtype)
-        # # print(outputs)
-        # # print(targets)
-        # # print(loss)
-        # print()
-
+            scaler.step(optimizer)
+            scaler.update()
         total_loss += loss.item() * inputs.size(0)
-        _, predicted = torch.max(outputs, 1)
-        total_correct += (predicted == targets).sum().item()
-        total_samples += inputs.size(0)
+
+        correct, total = correct_calculation_fn(outputs, targets)
+        total_correct += correct
+        total_samples += total
 
         if scheduler_step is not None:
             metrics = EpochMetrics(
@@ -169,7 +186,8 @@ def train_loop(
         optimizer: optim.Optimizer, 
         device: torch.device, 
         num_epochs: int,
-        loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module], torch.Tensor] = default_loss_calculation, 
+        loss_calculation_fn: Callable[[torch.Tensor, torch.Tensor, nn.Module, str], torch.Tensor] = default_loss_calculation, 
+        correct_calculation_fn: Callable[[torch.Tensor, torch.Tensor], tuple[int, int]] = default_correct_calculation, 
         scheduler_step: SchedulerStep | None = None,
         scheduler_step_timing: SchedulerStepTiming | None = None,
         use_amp: bool = False,
@@ -189,6 +207,7 @@ def train_loop(
     val_loss_history: list[float] = list()
     val_accs_history: list[float] = list()
     timestamp_history: list[tuple[datetime, datetime, datetime, datetime]] = list()
+
     for epoch in tqdm(range(num_epochs), desc="Training Epochs", leave=True, position=0):
         train_loss, train_acc, train_start, train_end = \
             train_one_epoch(
@@ -199,6 +218,7 @@ def train_loop(
                 optimizer, 
                 device, 
                 loss_calculation_fn, 
+                correct_calculation_fn,
                 scheduler_step if scheduler_step_timing == SchedulerStepTiming.AFTER_EACH_BATCH else None, 
                 scaler=scaler
             )
@@ -208,7 +228,8 @@ def train_loop(
                 val_loader, 
                 criterion, 
                 device, 
-                loss_calculation_fn
+                loss_calculation_fn,
+                correct_calculation_fn,
             )
 
         train_duration: str = str(train_end - train_start).split('.')[0]
@@ -224,7 +245,7 @@ def train_loop(
         timestamp_history.append((train_start, train_end, val_start, val_end))
 
         # early stop処理
-        if early_stop_state is not None:
+        if early_stop_state is not None and epoch >= early_stop_state.early_stop_settings.warmup_epochs:
 
             if val_loss < early_stop_state.best_val_loss - early_stop_state.early_stop_settings.min_delta:
                 # 改善した場合

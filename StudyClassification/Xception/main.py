@@ -66,10 +66,11 @@ def main():
     no_robocopy = args.no_robocopy
 
     # モデルの作成
-    if model_path is None:
-        model = Xception(num_classes=num_classes, dropout=dropout).to(device)
-    else:
-        model = torch.load(model_path).to(device)
+    model = Xception(num_classes=num_classes, dropout=dropout).to(device)
+
+    if model_path is not None:
+        model.load_state_dict(torch.load(model_path))
+        model = model.to(device)
 
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=lr)

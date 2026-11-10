@@ -31,7 +31,7 @@ def parse_args():
     # training settings
     parser.add_argument("--batch_size", type=int, default=32, help="Batch size for training")
     parser.add_argument("--epochs", type=int, default=100, help="Number of training epochs")
-    parser.add_argument("--lr", type=float, default=1e-5, help="Learning rate")
+    parser.add_argument("--lr", type=float, default=1e-4, help="Learning rate")
     parser.add_argument("--dataset", type=str, default="imagenette2-320", help="Dataset name")
     parser.add_argument("--device", type=str, default="cuda", help="Device to use for training")
     parser.add_argument("--use_amp", action="store_true", help="Use automatic mixed precision for training")
@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument("--early_stop_warmup_epochs", type=int, default=30, help="Number of warmup epochs before early stopping starts checking")
 
     # model setting
-    parser.add_argument("--model", type=str, required=True, help="Model path or name")
+    parser.add_argument("--model", type=str, default=None, help="Model path")
     parser.add_argument("--model_v", type=int, required=True, help="Model version (1, 2, or 3)")
 
     # logging settings
@@ -53,7 +53,7 @@ def parse_args():
 
     return parser.parse_args()
 
-def build_model(model_name: str, model_v: int, class_num: int):
+def build_model(model_name: str|None, model_v: int, class_num: int):
 
     model: nn.Module
     if model_v == 1:
@@ -65,7 +65,7 @@ def build_model(model_name: str, model_v: int, class_num: int):
     else:
         raise ValueError(f"Unsupported model version: {model_v}")
 
-    if os.path.exists(model_name):
+    if model_name is not None and os.path.exists(model_name):
         model.load_state_dict(torch.load(model_name))
 
     return model

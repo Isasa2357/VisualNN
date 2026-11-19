@@ -1,13 +1,4 @@
 # google netによるimagenette160, 320の学習
-# 呼び出し方
-# python main.py 
-#   --dataset [dataset, default: Z:\dataset\imagenette2-160]
-#   --epochs [number of epochs, default: 100]
-#   --batch-size [batch size, default: 32]
-#   --lr [learning rate, default: 0.001]
-#   --device [device to use, default: cuda if available else cpu]
-#   --project [project name, default: project]
-#   --result [path to save result, default: result]
 
 import argparse
 from tqdm import tqdm
@@ -23,7 +14,7 @@ from torchvision import transforms
 
 from comm.dataset import Dataset, make_dataloader, get_dataset_enum, get_class_num
 from Inception.nn import InceptionV1, InceptionV2, InceptionV3
-from comm.train_eval import train_loop, EpochMetrics, SchedulerStepTiming, EarlyStopSettings, make_log, default_correct_calculation, default_loss_calculation
+from comm.train_eval import train_loop, TrainLoop, EpochMetrics, SchedulerStepTiming, EarlyStopSettings, make_log, default_correct_calculation, default_loss_calculation, default_correct_fn, default_loss_fn
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Xception Training")
@@ -152,6 +143,10 @@ def main():
         total = target.size(0)
         return correct, total
 
+    def correct_fn_v1_3_top1_5(out: torch.Tensor, target: torch.Tensor) -> tuple[int, int, int]:
+        out = out[0]
+        return default_correct_fn(out, target)
+
     loss_fn = \
         train_loss_fn_v1 if model_v == 1 \
         else default_loss_calculation if model_v == 2 \
@@ -159,39 +154,64 @@ def main():
     
     correct_fn = correct_fn_v1_3 if model_v in [1, 3] else default_correct_calculation
 
-    # 学習の実行
-    train_losses, train_accs, val_losses, val_accs, timestamps = \
-        train_loop(
-            model, 
-            train_loader, 
-            val_loader, 
-            criterion, 
-            optimizer, 
-            device, 
-            epochs, 
-            loss_calculation_fn=loss_fn, 
-            correct_calculation_fn=correct_fn,
-            scheduler_step=scheduler_step, 
-            scheduler_step_timing=SchedulerStepTiming.AFTER_EACH_EPOCH,
-            use_amp=use_amp,
-            early_stop_settings=EarlyStopSettings(
-                patience=early_stop_patience,
-                min_delta=early_stop_min_delta, 
-                warmup_epochs=early_stop_warmup_epochs
-            )
-        )
-
-    # 結果の保存
-    make_log(
-        os.path.join(dir, project, result),
-        model, 
-        train_losses, 
-        train_accs,
-        val_losses,
-        val_accs,
-        timestamps, 
-        args
+    train_loop_instance = TrainLoop(
+        model=model, 
+        num_epochs=epochs,
+        train_loader=train_loader,
+        val_loader=val_loader,
+        criterion=criterion,
+        optimizer=optimizer,
+        device=device, 
+        log_dir=os.path.join(dir, project, result), 
+        use_amp=use_amp
     )
+    train_loop_instance.set_loss_fn(loss_fn)
+    if model_v in [1, 3]:
+        train_loop_instance.set_correct_fn(correct_fn_v1_3_top1_5)
+    train_loop_instance.set_early_stopping(EarlyStopSettings(
+        patience=early_stop_patience,
+        min_delta=early_stop_min_delta, 
+        warmup_epochs=early_stop_warmup_epochs
+    ))
+
+    train_loop_instance.start()
+
+    train_loop_instance.make_log(args)
+
+
+    # # 学習の実行
+    # train_losses, train_accs, val_losses, val_accs, timestamps = \
+    #     train_loop(
+    #         model, 
+    #         train_loader, 
+    #         val_loader, 
+    #         criterion, 
+    #         optimizer, 
+    #         device, 
+    #         epochs, 
+    #         loss_calculation_fn=loss_fn, 
+    #         correct_calculation_fn=correct_fn,
+    #         scheduler_step=scheduler_step, 
+    #         scheduler_step_timing=SchedulerStepTiming.AFTER_EACH_EPOCH,
+    #         use_amp=use_amp,
+    #         early_stop_settings=EarlyStopSettings(
+    #             patience=early_stop_patience,
+    #             min_delta=early_stop_min_delta, 
+    #             warmup_epochs=early_stop_warmup_epochs
+    #         )
+    #     )
+
+    # # 結果の保存
+    # make_log(
+    #     os.path.join(dir, project, result),
+    #     model, 
+    #     train_losses, 
+    #     train_accs,
+    #     val_losses,
+    #     val_accs,
+    #     timestamps, 
+    #     args
+    # )
 
 if __name__ == "__main__":
     main()

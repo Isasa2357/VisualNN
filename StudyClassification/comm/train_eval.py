@@ -593,7 +593,14 @@ class TrainLoop:
                     val_loss=val_loss,
                     val_acc=val_top1_acc,
                 )
+
+                before_scheduler_lr = self._optimizer.param_groups[0]['lr']
                 self._lr_scheduler(metrics)
+                after_scheduler_lr = self._optimizer.param_groups[0]['lr']
+    
+                if before_scheduler_lr != after_scheduler_lr:
+                    tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")
+
 
     def make_log(self, args: argparse.Namespace):
         '''

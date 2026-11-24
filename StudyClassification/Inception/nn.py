@@ -545,3 +545,538 @@ class InceptionV3(nn.Module):
         x = self._stage_8(self._reduce_17(x))
         x = torch.flatten(self._global_pool(x), 1)
         return self._classifier(self._dropout(x)), aux
+
+
+######################################################################
+#
+#           Inception v4
+#
+######################################################################
+
+
+class _InceptionV4Conv(nn.Sequential):
+    """V4-only convolution, batch normalization and ReLU."""
+
+    def __init__(
+        self, in_channels: int, out_channels: int,
+        kernel_size: int | tuple[int, int], *,
+        stride: int = 1, padding: int | tuple[int, int] = 0,
+    ):
+        super().__init__(
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size,
+                stride=stride, padding=padding, bias=False,
+            ),
+            nn.BatchNorm2d(out_channels, eps=1e-3),
+            nn.ReLU(inplace=True),
+        )
+
+
+class _InceptionV4Concat(nn.Module):
+    def __init__(self, *branches: nn.Module):
+        super().__init__()
+        self._branches = nn.ModuleList(branches)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.cat([branch(x) for branch in self._branches], dim=1)
+
+
+def _inception_v4_stem() -> nn.Module:
+    return nn.Sequential(
+        _InceptionV4Conv(3, 32, 3, stride=2),
+        _InceptionV4Conv(32, 32, 3),
+        _InceptionV4Conv(32, 64, 3, padding=1),
+        _InceptionV4Concat(
+            nn.MaxPool2d(3, stride=2),
+            _InceptionV4Conv(64, 96, 3, stride=2),
+        ),  # 73x73x160
+        _InceptionV4Concat(
+            nn.Sequential(
+                _InceptionV4Conv(160, 64, 1),
+                _InceptionV4Conv(64, 96, 3),
+            ),
+            nn.Sequential(
+                _InceptionV4Conv(160, 64, 1),
+                _InceptionV4Conv(64, 64, (1, 7), padding=(0, 3)),
+                _InceptionV4Conv(64, 64, (7, 1), padding=(3, 0)),
+                _InceptionV4Conv(64, 96, 3),
+            ),
+        ),  # 71x71x192
+        _InceptionV4Concat(
+            _InceptionV4Conv(192, 192, 3, stride=2),
+            nn.MaxPool2d(3, stride=2),
+        ),  # 35x35x384
+    )
+
+
+def _inception_v4_a() -> nn.Module:
+    return _InceptionV4Concat(
+        _InceptionV4Conv(384, 96, 1),
+        nn.Sequential(
+            _InceptionV4Conv(384, 64, 1),
+            _InceptionV4Conv(64, 96, 3, padding=1),
+        ),
+        nn.Sequential(
+            _InceptionV4Conv(384, 64, 1),
+            _InceptionV4Conv(64, 96, 3, padding=1),
+            _InceptionV4Conv(96, 96, 3, padding=1),
+        ),
+        nn.Sequential(
+            nn.AvgPool2d(3, stride=1, padding=1, count_include_pad=False),
+            _InceptionV4Conv(384, 96, 1),
+        ),
+    )
+
+
+def _inception_v4_reduction_a() -> nn.Module:
+    # Paper Table 1: k=192, l=224, m=256, n=384.
+    return _InceptionV4Concat(
+        _InceptionV4Conv(384, 384, 3, stride=2),
+        nn.Sequential(
+            _InceptionV4Conv(384, 192, 1),
+            _InceptionV4Conv(192, 224, 3, padding=1),
+            _InceptionV4Conv(224, 256, 3, stride=2),
+        ),
+        nn.MaxPool2d(3, stride=2),
+    )
+
+
+def _inception_v4_b() -> nn.Module:
+    return _InceptionV4Concat(
+        _InceptionV4Conv(1024, 384, 1),
+        nn.Sequential(
+            _InceptionV4Conv(1024, 192, 1),
+            _InceptionV4Conv(192, 224, (1, 7), padding=(0, 3)),
+            _InceptionV4Conv(224, 256, (7, 1), padding=(3, 0)),
+        ),
+        nn.Sequential(
+            _InceptionV4Conv(1024, 192, 1),
+            _InceptionV4Conv(192, 192, (7, 1), padding=(3, 0)),
+            _InceptionV4Conv(192, 224, (1, 7), padding=(0, 3)),
+            _InceptionV4Conv(224, 224, (7, 1), padding=(3, 0)),
+            _InceptionV4Conv(224, 256, (1, 7), padding=(0, 3)),
+        ),
+        nn.Sequential(
+            nn.AvgPool2d(3, stride=1, padding=1, count_include_pad=False),
+            _InceptionV4Conv(1024, 128, 1),
+        ),
+    )
+
+
+def _inception_v4_reduction_b() -> nn.Module:
+    return _InceptionV4Concat(
+        nn.Sequential(
+            _InceptionV4Conv(1024, 192, 1),
+            _InceptionV4Conv(192, 192, 3, stride=2),
+        ),
+        nn.Sequential(
+            _InceptionV4Conv(1024, 256, 1),
+            _InceptionV4Conv(256, 256, (1, 7), padding=(0, 3)),
+            _InceptionV4Conv(256, 320, (7, 1), padding=(3, 0)),
+            _InceptionV4Conv(320, 320, 3, stride=2),
+        ),
+        nn.MaxPool2d(3, stride=2),
+    )
+
+
+def _inception_v4_c() -> nn.Module:
+    return _InceptionV4Concat(
+        _InceptionV4Conv(1536, 256, 1),
+        nn.Sequential(
+            _InceptionV4Conv(1536, 384, 1),
+            _InceptionV4Concat(
+                _InceptionV4Conv(384, 256, (1, 3), padding=(0, 1)),
+                _InceptionV4Conv(384, 256, (3, 1), padding=(1, 0)),
+            ),
+        ),
+        nn.Sequential(
+            _InceptionV4Conv(1536, 384, 1),
+            _InceptionV4Conv(384, 448, (3, 1), padding=(1, 0)),
+            _InceptionV4Conv(448, 512, (1, 3), padding=(0, 1)),
+            _InceptionV4Concat(
+                _InceptionV4Conv(512, 256, (1, 3), padding=(0, 1)),
+                _InceptionV4Conv(512, 256, (3, 1), padding=(1, 0)),
+            ),
+        ),
+        nn.Sequential(
+            nn.AvgPool2d(3, stride=1, padding=1, count_include_pad=False),
+            _InceptionV4Conv(1536, 256, 1),
+        ),
+    )
+
+
+class InceptionV4(nn.Module):
+    """Pure Inception-v4. Input (N, 3, 299, 299), output logits (N, C).
+
+    Architecture follows arXiv:1602.07261 and the TF-Slim reference.
+    The classifier uses global average pooling and dropout with p=0.2.
+    """
+
+    def __init__(self, classification_num: int):
+        super().__init__()
+        self._stem = _inception_v4_stem()
+        self._stage_35 = nn.Sequential(*[_inception_v4_a() for _ in range(4)])
+        self._reduce_35 = _inception_v4_reduction_a()  # 17x17x1024
+        self._stage_17 = nn.Sequential(*[_inception_v4_b() for _ in range(7)])
+        self._reduce_17 = _inception_v4_reduction_b()  # 8x8x1536
+        self._stage_8 = nn.Sequential(*[_inception_v4_c() for _ in range(3)])
+        self._global_pool = nn.AdaptiveAvgPool2d(1)
+        self._dropout = nn.Dropout(p=0.2)
+        self._classifier = nn.Linear(1536, classification_num)
+
+        param_init(self)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._stage_35(self._stem(x))
+        x = self._stage_17(self._reduce_35(x))
+        x = self._stage_8(self._reduce_17(x))
+        x = torch.flatten(self._global_pool(x), 1)
+        return self._classifier(self._dropout(x))
+
+
+######################################################################
+#
+#           Inception-ResNet v1
+#
+######################################################################
+
+
+class _InceptionResNetV1Conv(nn.Sequential):
+    def __init__(
+        self, in_channels: int, out_channels: int,
+        kernel_size: int | tuple[int, int], *,
+        stride: int = 1, padding: int | tuple[int, int] = 0,
+    ):
+        super().__init__(
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size,
+                stride=stride, padding=padding, bias=False,
+            ),
+            nn.BatchNorm2d(out_channels, eps=1e-3),
+            nn.ReLU(inplace=True),
+        )
+
+
+class _InceptionResNetV1Concat(nn.Module):
+    def __init__(self, *branches: nn.Module):
+        super().__init__()
+        self._branches = nn.ModuleList(branches)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.cat([branch(x) for branch in self._branches], dim=1)
+
+
+class _InceptionResNetV1Residual(nn.Module):
+    """Project the concatenated branches linearly before scaled addition."""
+
+    def __init__(
+        self, branches: nn.Module, branch_channels: int, out_channels: int,
+        scale: float, *, activation: bool = True,
+    ):
+        super().__init__()
+        self._branches = branches
+        # The residual projection has neither BN nor an activation.
+        self._projection = nn.Conv2d(branch_channels, out_channels, 1)
+        self._scale = scale
+        self._activation = nn.ReLU() if activation else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = self._projection(self._branches(x))
+        return self._activation(x + self._scale * residual)
+
+
+def _inception_resnet_v1_a() -> nn.Module:
+    branches = _InceptionResNetV1Concat(
+        _InceptionResNetV1Conv(256, 32, 1),
+        nn.Sequential(
+            _InceptionResNetV1Conv(256, 32, 1),
+            _InceptionResNetV1Conv(32, 32, 3, padding=1),
+        ),
+        nn.Sequential(
+            _InceptionResNetV1Conv(256, 32, 1),
+            _InceptionResNetV1Conv(32, 32, 3, padding=1),
+            _InceptionResNetV1Conv(32, 32, 3, padding=1),
+        ),
+    )
+    return _InceptionResNetV1Residual(branches, 96, 256, scale=0.17)
+
+
+def _inception_resnet_v1_b() -> nn.Module:
+    branches = _InceptionResNetV1Concat(
+        _InceptionResNetV1Conv(896, 128, 1),
+        nn.Sequential(
+            _InceptionResNetV1Conv(896, 128, 1),
+            _InceptionResNetV1Conv(128, 128, (1, 7), padding=(0, 3)),
+            _InceptionResNetV1Conv(128, 128, (7, 1), padding=(3, 0)),
+        ),
+    )
+    return _InceptionResNetV1Residual(branches, 256, 896, scale=0.1)
+
+
+def _inception_resnet_v1_c(
+    *, scale: float = 0.2, activation: bool = True,
+) -> nn.Module:
+    branches = _InceptionResNetV1Concat(
+        _InceptionResNetV1Conv(1792, 192, 1),
+        nn.Sequential(
+            _InceptionResNetV1Conv(1792, 192, 1),
+            _InceptionResNetV1Conv(192, 192, (1, 3), padding=(0, 1)),
+            _InceptionResNetV1Conv(192, 192, (3, 1), padding=(1, 0)),
+        ),
+    )
+    return _InceptionResNetV1Residual(
+        branches, 384, 1792, scale=scale, activation=activation,
+    )
+
+
+def _inception_resnet_v1_reduction_a() -> nn.Module:
+    return _InceptionResNetV1Concat(
+        _InceptionResNetV1Conv(256, 384, 3, stride=2),
+        nn.Sequential(
+            _InceptionResNetV1Conv(256, 192, 1),
+            _InceptionResNetV1Conv(192, 192, 3, padding=1),
+            _InceptionResNetV1Conv(192, 256, 3, stride=2),
+        ),
+        nn.MaxPool2d(3, stride=2),
+    )
+
+
+def _inception_resnet_v1_reduction_b() -> nn.Module:
+    return _InceptionResNetV1Concat(
+        nn.Sequential(
+            _InceptionResNetV1Conv(896, 256, 1),
+            _InceptionResNetV1Conv(256, 384, 3, stride=2),
+        ),
+        nn.Sequential(
+            _InceptionResNetV1Conv(896, 256, 1),
+            _InceptionResNetV1Conv(256, 256, 3, stride=2),
+        ),
+        nn.Sequential(
+            _InceptionResNetV1Conv(896, 256, 1),
+            _InceptionResNetV1Conv(256, 256, 3, padding=1),
+            _InceptionResNetV1Conv(256, 256, 3, stride=2),
+        ),
+        nn.MaxPool2d(3, stride=2),
+    )
+
+
+class InceptionResNetV1(nn.Module):
+    """Paper Figure 15 variant with 5 A, 10 B and 5 C blocks.
+
+    Returns class logits (N, C). Residual scales are 0.17, 0.1 and 0.2
+    for stages A, B and C, respectively. No auxiliary classifier is used.
+    """
+
+    def __init__(self, classification_num: int):
+        super().__init__()
+        self._stem = nn.Sequential(
+            _InceptionResNetV1Conv(3, 32, 3, stride=2),
+            _InceptionResNetV1Conv(32, 32, 3),
+            _InceptionResNetV1Conv(32, 64, 3, padding=1),
+            nn.MaxPool2d(3, stride=2),
+            _InceptionResNetV1Conv(64, 80, 1),
+            _InceptionResNetV1Conv(80, 192, 3),
+            _InceptionResNetV1Conv(192, 256, 3, stride=2),
+        )  # 35x35x256 for 299x299 inputs
+        self._stage_35 = nn.Sequential(*[_inception_resnet_v1_a() for _ in range(5)])
+        self._reduce_35 = _inception_resnet_v1_reduction_a()  # 17x17x896
+        self._stage_17 = nn.Sequential(*[_inception_resnet_v1_b() for _ in range(10)])
+        self._reduce_17 = _inception_resnet_v1_reduction_b()  # 8x8x1792
+        self._stage_8 = nn.Sequential(*[_inception_resnet_v1_c() for _ in range(5)])
+        self._global_pool = nn.AdaptiveAvgPool2d(1)
+        self._dropout = nn.Dropout(p=0.2)
+        self._classifier = nn.Linear(1792, classification_num)
+
+        param_init(self)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._stage_35(self._stem(x))
+        x = self._stage_17(self._reduce_35(x))
+        x = self._stage_8(self._reduce_17(x))
+        x = torch.flatten(self._global_pool(x), 1)
+        return self._classifier(self._dropout(x))
+
+
+######################################################################
+#
+#           Inception-ResNet v2
+#
+######################################################################
+
+
+class _InceptionResNetV2Conv(nn.Sequential):
+    def __init__(
+        self, in_channels: int, out_channels: int,
+        kernel_size: int | tuple[int, int], *,
+        stride: int = 1, padding: int | tuple[int, int] = 0,
+    ):
+        super().__init__(
+            nn.Conv2d(
+                in_channels, out_channels, kernel_size,
+                stride=stride, padding=padding, bias=False,
+            ),
+            nn.BatchNorm2d(out_channels, eps=1e-3),
+            nn.ReLU(inplace=True),
+        )
+
+
+class _InceptionResNetV2Concat(nn.Module):
+    def __init__(self, *branches: nn.Module):
+        super().__init__()
+        self._branches = nn.ModuleList(branches)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        return torch.cat([branch(x) for branch in self._branches], dim=1)
+
+
+class _InceptionResNetV2Residual(nn.Module):
+    """Project the concatenated branches linearly before scaled addition."""
+
+    def __init__(
+        self, branches: nn.Module, branch_channels: int, out_channels: int,
+        scale: float, *, activation: bool = True,
+    ):
+        super().__init__()
+        self._branches = branches
+        # The residual projection has neither BN nor an activation.
+        self._projection = nn.Conv2d(branch_channels, out_channels, 1)
+        self._scale = scale
+        self._activation = nn.ReLU() if activation else nn.Identity()
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        residual = self._projection(self._branches(x))
+        return self._activation(x + self._scale * residual)
+
+
+def _inception_resnet_v2_a() -> nn.Module:
+    branches = _InceptionResNetV2Concat(
+        _InceptionResNetV2Conv(320, 32, 1),
+        nn.Sequential(
+            _InceptionResNetV2Conv(320, 32, 1),
+            _InceptionResNetV2Conv(32, 32, 3, padding=1),
+        ),
+        nn.Sequential(
+            _InceptionResNetV2Conv(320, 32, 1),
+            _InceptionResNetV2Conv(32, 48, 3, padding=1),
+            _InceptionResNetV2Conv(48, 64, 3, padding=1),
+        ),
+    )
+    return _InceptionResNetV2Residual(branches, 128, 320, scale=0.17)
+
+
+def _inception_resnet_v2_b() -> nn.Module:
+    branches = _InceptionResNetV2Concat(
+        _InceptionResNetV2Conv(1088, 192, 1),
+        nn.Sequential(
+            _InceptionResNetV2Conv(1088, 128, 1),
+            _InceptionResNetV2Conv(128, 160, (1, 7), padding=(0, 3)),
+            _InceptionResNetV2Conv(160, 192, (7, 1), padding=(3, 0)),
+        ),
+    )
+    return _InceptionResNetV2Residual(branches, 384, 1088, scale=0.1)
+
+
+def _inception_resnet_v2_c(
+    *, scale: float = 0.2, activation: bool = True,
+) -> nn.Module:
+    branches = _InceptionResNetV2Concat(
+        _InceptionResNetV2Conv(2080, 192, 1),
+        nn.Sequential(
+            _InceptionResNetV2Conv(2080, 192, 1),
+            _InceptionResNetV2Conv(192, 224, (1, 3), padding=(0, 1)),
+            _InceptionResNetV2Conv(224, 256, (3, 1), padding=(1, 0)),
+        ),
+    )
+    return _InceptionResNetV2Residual(
+        branches, 448, 2080, scale=scale, activation=activation,
+    )
+
+
+def _inception_resnet_v2_reduction_a() -> nn.Module:
+    return _InceptionResNetV2Concat(
+        _InceptionResNetV2Conv(320, 384, 3, stride=2),
+        nn.Sequential(
+            _InceptionResNetV2Conv(320, 256, 1),
+            _InceptionResNetV2Conv(256, 256, 3, padding=1),
+            _InceptionResNetV2Conv(256, 384, 3, stride=2),
+        ),
+        nn.MaxPool2d(3, stride=2),
+    )
+
+
+def _inception_resnet_v2_reduction_b() -> nn.Module:
+    return _InceptionResNetV2Concat(
+        nn.Sequential(
+            _InceptionResNetV2Conv(1088, 256, 1),
+            _InceptionResNetV2Conv(256, 384, 3, stride=2),
+        ),
+        nn.Sequential(
+            _InceptionResNetV2Conv(1088, 256, 1),
+            _InceptionResNetV2Conv(256, 288, 3, stride=2),
+        ),
+        nn.Sequential(
+            _InceptionResNetV2Conv(1088, 256, 1),
+            _InceptionResNetV2Conv(256, 288, 3, padding=1),
+            _InceptionResNetV2Conv(288, 320, 3, stride=2),
+        ),
+        nn.MaxPool2d(3, stride=2),
+    )
+
+
+class InceptionResNetV2(nn.Module):
+    """TF-Slim released variant with 10 A, 20 B and 10 C blocks.
+
+    Returns class logits (N, C). The final C block uses scale=1 and no
+    activation, followed by a 1536-channel conv, as in TF-Slim.
+    No auxiliary classifier is used.
+    """
+
+    def __init__(self, classification_num: int):
+        super().__init__()
+        self._stem = nn.Sequential(
+            _InceptionResNetV2Conv(3, 32, 3, stride=2),
+            _InceptionResNetV2Conv(32, 32, 3),
+            _InceptionResNetV2Conv(32, 64, 3, padding=1),
+            nn.MaxPool2d(3, stride=2),
+            _InceptionResNetV2Conv(64, 80, 1),
+            _InceptionResNetV2Conv(80, 192, 3),
+            nn.MaxPool2d(3, stride=2),
+            _InceptionResNetV2Concat(
+                _InceptionResNetV2Conv(192, 96, 1),
+                nn.Sequential(
+                    _InceptionResNetV2Conv(192, 48, 1),
+                    _InceptionResNetV2Conv(48, 64, 5, padding=2),
+                ),
+                nn.Sequential(
+                    _InceptionResNetV2Conv(192, 64, 1),
+                    _InceptionResNetV2Conv(64, 96, 3, padding=1),
+                    _InceptionResNetV2Conv(96, 96, 3, padding=1),
+                ),
+                nn.Sequential(
+                    nn.AvgPool2d(3, stride=1, padding=1, count_include_pad=False),
+                    _InceptionResNetV2Conv(192, 64, 1),
+                ),
+            ),
+        )  # 35x35x320 for 299x299 inputs
+        self._stage_35 = nn.Sequential(*[_inception_resnet_v2_a() for _ in range(10)])
+        self._reduce_35 = _inception_resnet_v2_reduction_a()  # 17x17x1088
+        self._stage_17 = nn.Sequential(*[_inception_resnet_v2_b() for _ in range(20)])
+        self._reduce_17 = _inception_resnet_v2_reduction_b()  # 8x8x2080
+        self._stage_8 = nn.Sequential(
+            *[_inception_resnet_v2_c() for _ in range(9)],
+            _inception_resnet_v2_c(scale=1.0, activation=False),
+        )
+        self._final_conv = _InceptionResNetV2Conv(2080, 1536, 1)
+        self._global_pool = nn.AdaptiveAvgPool2d(1)
+        self._dropout = nn.Dropout(p=0.2)
+        self._classifier = nn.Linear(1536, classification_num)
+
+        param_init(self)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self._stage_35(self._stem(x))
+        x = self._stage_17(self._reduce_35(x))
+        x = self._stage_8(self._reduce_17(x))
+        x = self._final_conv(x)
+        x = torch.flatten(self._global_pool(x), 1)
+        return self._classifier(self._dropout(x))

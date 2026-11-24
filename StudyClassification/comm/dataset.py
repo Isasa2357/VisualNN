@@ -14,6 +14,7 @@ class Dataset(Enum):
     IMAGENETTE320 = 2
     CIFAR10 = 3
     CIFAR100 = 4
+    IMAGENET100 = 5
 
 def get_dataset_enum(dataset: str) -> Dataset:
     if dataset.lower() == "imagenette2-160":
@@ -24,6 +25,8 @@ def get_dataset_enum(dataset: str) -> Dataset:
         return Dataset.CIFAR10
     elif dataset.lower() == "cifar100":
         return Dataset.CIFAR100
+    elif dataset.lower() == "imagenet100":
+        return Dataset.IMAGENET100
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
@@ -36,6 +39,8 @@ def get_dataset_str(dataset: Dataset) -> str:
         return "cifar10"
     elif dataset == Dataset.CIFAR100:
         return "cifar100"
+    elif dataset == Dataset.IMAGENET100:
+        return "imagenet100"
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
@@ -48,19 +53,23 @@ def get_class_num(dataset: Dataset) -> int:
         return 10
     elif dataset == Dataset.CIFAR100:
         return 100
+    elif dataset == Dataset.IMAGENET100:
+        return 100
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
 def get_dataset_path(dataset: Dataset) -> tuple[str, str, str]:
-    strage_root: str = "Z:\\dataset\\VisionClassification"
+    storage_root: str = "Z:\\dataset\\VisionClassification"
     if dataset == Dataset.IMAGENETTE160:
-        return f"{strage_root}\\imagenette2-160", f"{strage_root}\\imagenette2-160\\train", f"{strage_root}\\imagenette2-160\\val"
+        return f"{storage_root}\\imagenette2-160", f"{storage_root}\\imagenette2-160\\train", f"{storage_root}\\imagenette2-160\\val"
     elif dataset == Dataset.IMAGENETTE320:
-        return f"{strage_root}\\imagenette2-320", f"{strage_root}\\imagenette2-320\\train", f"{strage_root}\\imagenette2-320\\val"
+        return f"{storage_root}\\imagenette2-320", f"{storage_root}\\imagenette2-320\\train", f"{storage_root}\\imagenette2-320\\val"
     elif dataset == Dataset.CIFAR10:
-        return f"{strage_root}\\cifar10", f"{strage_root}\\cifar10\\train", f"{strage_root}\\cifar10\\val"
+        return f"{storage_root}\\cifar10", f"{storage_root}\\cifar10\\train", f"{storage_root}\\cifar10\\val"
     elif dataset == Dataset.CIFAR100:
-        return f"{strage_root}\\cifar100", f"{strage_root}\\cifar100\\train", f"{strage_root}\\cifar100\\val"
+        return f"{storage_root}\\cifar100", f"{storage_root}\\cifar100\\train", f"{storage_root}\\cifar100\\val"
+    elif dataset == Dataset.IMAGENET100:
+        return f"{storage_root}\\imagenet100", f"{storage_root}\\imagenet100\\train", f"{storage_root}\\imagenet100\\val"
     else:
         raise ValueError(f"Unsupported dataset: {dataset}")
 
@@ -90,21 +99,8 @@ def make_dataloader(
         train_path = f"./dataset/{dataset_str}/train"
         val_path = f"./dataset/{dataset_str}/val"
 
-
-    if dataset == Dataset.IMAGENETTE160:
-        train_dataset = ImageFolder(root=train_path, transform=train_transform)
-        val_dataset = ImageFolder(root=val_path, transform=val_transform)
-    elif dataset == Dataset.IMAGENETTE320:
-        train_dataset = ImageFolder(root=train_path, transform=train_transform)
-        val_dataset = ImageFolder(root=val_path, transform=val_transform)
-    elif dataset == Dataset.CIFAR10:
-        train_dataset = ImageFolder(root=train_path, transform=train_transform)
-        val_dataset = ImageFolder(root=val_path, transform=val_transform)
-    elif dataset == Dataset.CIFAR100:
-        train_dataset = ImageFolder(root=train_path, transform=train_transform)
-        val_dataset = ImageFolder(root=val_path, transform=val_transform)
-    else:
-        raise ValueError(f"Unsupported dataset: {dataset}")
+    train_dataset = ImageFolder(root=train_path, transform=train_transform)
+    val_dataset = ImageFolder(root=val_path, transform=val_transform)
     
     train_loader = DataLoader(
         train_dataset, 

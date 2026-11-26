@@ -32,6 +32,7 @@ def parse_args():
     parser.add_argument("--early-stop-warmup-epochs", type=int, default=30, help="Number of warmup epochs before early stopping starts checking")
     parser.add_argument("--dataloader-workers", type=int, default=6)
     parser.add_argument("--dataloader-prefetch", type=int, default=2)
+    parser.add_argument("--label-smooth", type=float, default=0.0)
 
     # model setting
     parser.add_argument("--use-se", action="store_true",help="SEブロックを適用するかどうか")
@@ -39,7 +40,7 @@ def parse_args():
     # logging settings
     parser.add_argument('--dir', type=str, default='./', help='Directory for the project')
     parser.add_argument('--project', type=str, default='run')
-    parser.add_argument('--result', type=str, default='Inception')
+    parser.add_argument('--result', type=str, default='compSE')
 
     # other settings
     parser.add_argument('--no-robocopy', action='store_true', help='Use robocopy to copy the dataset')
@@ -64,6 +65,7 @@ def main():
     early_stop_warmup_epochs = args.early_stop_warmup_epochs
     dataloader_workers = args.dataloader_workers
     dataloader_prefetch = args.dataloader_prefetch
+    label_smooth = args.label_smooth
 
     use_se = args.use_se
     model = build_model(class_num, use_se).to(device)
@@ -74,7 +76,7 @@ def main():
 
     no_robocopy = args.no_robocopy
 
-    criterion = nn.CrossEntropyLoss(label_smoothing=0.1)
+    criterion = nn.CrossEntropyLoss(label_smoothing=label_smooth)
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     scheduler = optim.lr_scheduler.StepLR(
         optimizer, 

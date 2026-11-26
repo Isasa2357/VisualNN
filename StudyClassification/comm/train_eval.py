@@ -1,6 +1,7 @@
 # 学習と評価ループの汎用型
 
 import os
+import sys
 import csv
 import argparse
 
@@ -42,8 +43,8 @@ class EarlyStopSettings:
 @dataclass(frozen=True)
 class EarlyStopState:
     early_stop_settings: EarlyStopSettings
-    best_val_loss: float
-    counter: int
+    best_val_loss: float=sys.float_info.max
+    counter: int=0
 
 def default_loss_calculation(out: torch.Tensor, target: torch.Tensor, criterion: nn.Module, mode: str):
     '''
@@ -400,7 +401,7 @@ class TrainLoop:
         self._use_early_stopping = False
         self._early_stop_state: EarlyStopState=EarlyStopState(
             EarlyStopSettings(patience=0, min_delta=0.0, warmup_epochs=0), 
-            0.0, 
+            sys.float_info.max, 
             0
         )
 
@@ -433,7 +434,7 @@ class TrainLoop:
         self._use_early_stopping = True
         self._early_stop_state = EarlyStopState(
             early_stop_setting, 
-            0.0, 
+            sys.float_info.max, 
             0
         )
 
@@ -550,11 +551,6 @@ class TrainLoop:
             self._val_top1_acc_history.append(val_top1_acc)
             self._val_top5_acc_history.append(val_top5_acc)
 
-            # ログの表示
-            tqdm.write(f"----- Epoch {epoch+1} -----")
-            tqdm.write(f"Train Loss: {train_loss:.4f}, Train Top1 Acc: {train_top1_acc:.4f}, Train Top5 Acc: {train_top5_acc:.4f}, duration: {str(train_end - train_start).split('.')[0]}")
-            tqdm.write(f"Val Loss: {val_loss:.4f}, Val Top1 Acc: {val_top1_acc:.4f}, Val Top5 Acc: {val_top5_acc:.4f}, duration: {str(val_end - val_start).split('.')[0]}")
-
             # best modelの更新
             if val_top1_acc > self._best_model_acc:
                 self._best_model_acc = val_top1_acc
@@ -601,6 +597,10 @@ class TrainLoop:
                 if before_scheduler_lr != after_scheduler_lr:
                     tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")
 
+            # ログの表示
+            tqdm.write(f"----- Epoch {epoch+1} -----")
+            tqdm.write(f"Train Loss: {train_loss:.4f}, Train Top1 Acc: {train_top1_acc:.4f}, Train Top5 Acc: {train_top5_acc:.4f}, duration: {str(train_end - train_start).split('.')[0]}")
+            tqdm.write(f"Val Loss: {val_loss:.4f}, Val Top1 Acc: {val_top1_acc:.4f}, Val Top5 Acc: {val_top5_acc:.4f}, duration: {str(val_end - val_start).split('.')[0]}")
 
     def make_log(self, args: argparse.Namespace):
         '''
@@ -622,7 +622,7 @@ class TrainLoop:
             writer = csv.writer(f)
             writer.writerow(["epoch", "train duration", "val duration", "train top1 acc", "train top5 acc", "train loss", "val top1 acc", "val top5 acc", "val loss"])
 
-            for i in range(self._num_epochs):
+            for i in range(len(self._train_end_history)):
                 train_duration = self._train_end_history[i] - self._train_start_history[i]
                 val_duration = self._val_end_history[i] - self._val_start_history[i]
 

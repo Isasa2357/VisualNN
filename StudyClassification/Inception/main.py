@@ -66,6 +66,8 @@ def parse_args():
 
     # other settings
     parser.add_argument('--no-robocopy', action='store_true', help='Use robocopy to copy the dataset')
+    parser.add_argument("--loader-workers", type=int, default=6)
+    parser.add_argument("--loader-prefetch-factor", type=int, default=2)
 
     return parser.parse_args()
 
@@ -114,6 +116,8 @@ def main():
     result = args.result
 
     no_robocopy = args.no_robocopy
+    loader_workers = args.loader_workers
+    loader_prefetch_factor = args.loader_prefetch_factor
 
     # モデルの作成
     model = build_model(model_name, archtecture, class_num).to(device)
@@ -126,7 +130,7 @@ def main():
         gamma=0.94
     )
 
-    resize_size = (299, 299) if archtecture == InceptionArchitecture.V1 else (224, 224)
+    resize_size = (299, 299) if archtecture != InceptionArchitecture.V1 else (224, 224)
 
     train_transform = transforms.Compose([
         transforms.RandomResizedCrop(resize_size, (0.3, 1)), 
@@ -148,7 +152,9 @@ def main():
         download=True, 
         robocopy=not no_robocopy,
         train_drop_last=True,
-        val_drop_last=False
+        val_drop_last=False, 
+        num_workers=loader_workers, 
+        prefetch_factor=loader_prefetch_factor
     )
 
     # lrの更新関数を定義
@@ -185,7 +191,7 @@ def main():
         optimizer=optimizer,
         device=device, 
         log_dir=os.path.join(dir, project, result), 
-        use_amp=use_amp
+        use_amp=use_amp, 
     )
 
     train_loop_instance.set_loss_fn(loss_fn)

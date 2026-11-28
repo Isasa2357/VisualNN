@@ -580,6 +580,11 @@ class TrainLoop:
                     tqdm.write(f"Early stopping at epoch {epoch+1}")
                     break
 
+            # ログの表示
+            tqdm.write(f"----- Epoch {epoch+1} -----")
+            tqdm.write(f"Train Loss: {train_loss:.4f}, Train Top1 Acc: {train_top1_acc:.4f}, Train Top5 Acc: {train_top5_acc:.4f}, duration: {str(train_end - train_start).split('.')[0]}")
+            tqdm.write(f"Val Loss: {val_loss:.4f}, Val Top1 Acc: {val_top1_acc:.4f}, Val Top5 Acc: {val_top5_acc:.4f}, duration: {str(val_end - val_start).split('.')[0]}")
+
             # lrの更新
             if self._use_lr_scheduler:
                 metrics = EpochMetrics(
@@ -596,11 +601,6 @@ class TrainLoop:
     
                 if before_scheduler_lr != after_scheduler_lr:
                     tqdm.write(f"Scheduler step executed at epoch {epoch+1}, lr changed from {before_scheduler_lr} to {after_scheduler_lr}")
-
-            # ログの表示
-            tqdm.write(f"----- Epoch {epoch+1} -----")
-            tqdm.write(f"Train Loss: {train_loss:.4f}, Train Top1 Acc: {train_top1_acc:.4f}, Train Top5 Acc: {train_top5_acc:.4f}, duration: {str(train_end - train_start).split('.')[0]}")
-            tqdm.write(f"Val Loss: {val_loss:.4f}, Val Top1 Acc: {val_top1_acc:.4f}, Val Top5 Acc: {val_top5_acc:.4f}, duration: {str(val_end - val_start).split('.')[0]}")
 
     def make_log(self, args: argparse.Namespace):
         '''

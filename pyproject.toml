@@ -2,7 +2,7 @@
 name = "visualnn"
 version = "0.1.0"
 description = "Add your description here"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.15"
 dependencies = [
     "cloudpickle==3.1.2",
     "matplotlib==3.11.2",
@@ -13,7 +13,6 @@ dependencies = [
     "scipy==1.18.1",
     "tensorboard==2.21.0",
     "tqdm==4.70.1",
-    # Select the CPU/CUDA build at installation time for each machine.
     "torch",
     "torchaudio",
     "torchvision",
@@ -29,13 +28,17 @@ dev = [
 ]
 
 [tool.uv]
-# Prevent `uv run` from re-syncing a CUDA-enabled PyTorch installation
-# against uv.lock and replacing it with a CPU build.
-managed = false
+managed = true
 
-[tool.uv.pip]
-# Used by `uv pip` commands; setup.ps1 also passes this explicitly.
-torch-backend = "auto"
+[tool.uv.sources]
+torch = [{ index = "pytorch", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+torchaudio = [{ index = "pytorch", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+
+[[tool.uv.index]]
+name = "pytorch"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [build-system]
 requires = ["uv_build>=0.12.10,<0.13.0"]

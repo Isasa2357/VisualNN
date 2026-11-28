@@ -4,6 +4,7 @@ import os
 import sys
 import csv
 import argparse
+from contextlib import nullcontext
 
 from collections.abc import Callable
 from datetime import datetime
@@ -19,6 +20,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader
 
 from comm.filesystem import solve_foldername_conflict
+
+from prefetch_dataloader import DevicePrefetchDataLoader
 
 class SchedulerStepTiming(Enum):
     AFTER_EACH_EPOCH = 1
@@ -373,7 +376,9 @@ class TrainLoop:
             optimizer: torch.optim.Optimizer,
             device: torch.device, 
             log_dir: str,
-            use_amp: bool = False
+            use_amp: bool = False, 
+            use_device_prefetch: bool=False, 
+            device_prefetch_size: int=4
     ):
         self._model = model
         self._best_model_state: dict[str, torch.Tensor] = {}
@@ -385,6 +390,8 @@ class TrainLoop:
         self._optimizer = optimizer
         self._device = device
         self._use_amp = use_amp
+        self._use_device_prefetch = use_device_prefetch
+        self._device_prefetch_size = device_prefetch_size
         self._scaler = torch.amp.GradScaler()
 
         # ロス計算式
@@ -448,35 +455,42 @@ class TrainLoop:
         total_top5_correct = 0
         total_top1_correct = 0
         total_samples = 0
+
+        loader_context: DevicePrefetchDataLoader | nullcontext[DataLoader]
+        if self._use_device_prefetch:
+            loader_context = DevicePrefetchDataLoader(self._train_loader, prefetch_size=self._device_prefetch_size, device=self._device)
+        else:
+            loader_context = nullcontext(self._train_loader)
     
         start = datetime.now()
 
-        for inputs, targets in tqdm(self._train_loader, desc="Training", leave=False, position=1):
-            # デバイスにデータを転送
-            inputs, targets = inputs.to(self._device), targets.to(self._device)
+        with loader_context as loader:
+            for inputs, targets in tqdm(loader, desc="Training", leave=False, position=1):
+                # デバイスにデータを転送
+                inputs, targets = inputs.to(self._device), targets.to(self._device)
 
-            self._optimizer.zero_grad()
+                self._optimizer.zero_grad()
 
-            # 学習
-            if self._use_amp:
-                with torch.amp.autocast(device_type=self._device.type, dtype=torch.bfloat16):
+                # 学習
+                if self._use_amp:
+                    with torch.amp.autocast(device_type=self._device.type, dtype=torch.bfloat16):
+                        outputs = self._model(inputs)
+                        loss = self._loss_fn(outputs, targets, self._criterion, "train")
+                    self._scaler.scale(loss).backward()
+                    self._scaler.step(self._optimizer)
+                    self._scaler.update()
+                else:
                     outputs = self._model(inputs)
                     loss = self._loss_fn(outputs, targets, self._criterion, "train")
-                self._scaler.scale(loss).backward()
-                self._scaler.step(self._optimizer)
-                self._scaler.update()
-            else:
-                outputs = self._model(inputs)
-                loss = self._loss_fn(outputs, targets, self._criterion, "train")
-                loss.backward()
-                self._optimizer.step()
+                    loss.backward()
+                    self._optimizer.step()
 
-            total_loss += loss.item() * inputs.size(0)
-            top1_correct, top5_correct, total = self._correct_fn(outputs, targets)
+                total_loss += loss.item() * inputs.size(0)
+                top1_correct, top5_correct, total = self._correct_fn(outputs, targets)
 
-            total_top1_correct += top1_correct
-            total_top5_correct += top5_correct
-            total_samples += total
+                total_top1_correct += top1_correct
+                total_top5_correct += top5_correct
+                total_samples += total
 
         end = datetime.now()
 
@@ -497,25 +511,32 @@ class TrainLoop:
         total_top5_correct = 0
         total_samples = 0
 
+        loader_context: DevicePrefetchDataLoader | nullcontext[DataLoader]
+        if self._use_device_prefetch:
+            loader_context = DevicePrefetchDataLoader(self._val_loader, prefetch_size=self._device_prefetch_size, device=self._device)
+        else:
+            loader_context = nullcontext(self._val_loader)
+
         start = datetime.now()
 
         with torch.no_grad():
-            for inputs, targets in tqdm(self._val_loader, desc="Evaluating", leave=False, position=1):
-                # デバイスにデータを転送
-                inputs, targets = inputs.to(self._device), targets.to(self._device)
-
-                # 推論
-                outputs = self._model(inputs)
-
-                # ロスを計算
-                loss = self._loss_fn(outputs, targets, self._criterion, "val")
-                total_loss += loss.item() * inputs.size(0)
-
-                # 正答数を計算
-                top1_correct, top5_correct, total = self._correct_fn(outputs, targets)
-                total_top1_correct += top1_correct
-                total_top5_correct += top5_correct
-                total_samples += total
+            with loader_context as loader:
+                for inputs, targets in tqdm(loader, desc="Evaluating", leave=False, position=1):
+                    # デバイスにデータを転送
+                    inputs, targets = inputs.to(self._device), targets.to(self._device)
+    
+                    # 推論
+                    outputs = self._model(inputs)
+    
+                    # ロスを計算
+                    loss = self._loss_fn(outputs, targets, self._criterion, "val")
+                    total_loss += loss.item() * inputs.size(0)
+    
+                    # 正答数を計算
+                    top1_correct, top5_correct, total = self._correct_fn(outputs, targets)
+                    total_top1_correct += top1_correct
+                    total_top5_correct += top5_correct
+                    total_samples += total
 
         end = datetime.now()
 

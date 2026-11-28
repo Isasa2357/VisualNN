@@ -16,6 +16,7 @@ dependencies = [
     "torch",
     "torchaudio",
     "torchvision",
+    "prefetch-dataloader",
 ]
 
 [project.scripts]
@@ -34,10 +35,11 @@ managed = true
 torch = [{ index = "pytorch", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
 torchaudio = [{ index = "pytorch", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
 torchvision = [{ index = "pytorch", marker = "sys_platform == 'win32' or sys_platform == 'linux'" }]
+prefetch-dataloader = { git = "https://github.com/Isasa2357/PrefetchDataLoader.git", rev = "main" }
 
 [[tool.uv.index]]
 name = "pytorch"
-url = "https://download.pytorch.org/whl/cpu"
+url = "https://download.pytorch.org/whl/cu130"
 explicit = true
 
 [build-system]

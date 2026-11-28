@@ -33,6 +33,8 @@ def parse_args():
     parser.add_argument("--dataloader-workers", type=int, default=6)
     parser.add_argument("--dataloader-prefetch", type=int, default=2)
     parser.add_argument("--label-smooth", type=float, default=0.0)
+    parser.add_argument("--use-device-prefetch", action="store_true")
+    parser.add_argument("--device-prefetch-size", type=int, default=4)
 
     # model setting
     parser.add_argument("--use-se", action="store_true",help="SEブロックを適用するかどうか")
@@ -66,6 +68,8 @@ def main():
     dataloader_workers = args.dataloader_workers
     dataloader_prefetch = args.dataloader_prefetch
     label_smooth = args.label_smooth
+    use_device_prefetch = args.use_device_prefetch
+    device_prefetch_size = args.device_prefetch_size
 
     use_se = args.use_se
     model = build_model(class_num, use_se).to(device)
@@ -124,7 +128,9 @@ def main():
         optimizer=optimizer,
         device=device, 
         log_dir=os.path.join(dir, project, result), 
-        use_amp=use_amp
+        use_amp=use_amp, 
+        use_device_prefetch=use_device_prefetch, 
+        device_prefetch_size=device_prefetch_size
     )
     
     train_loop_instance.set_early_stopping(EarlyStopSettings(
